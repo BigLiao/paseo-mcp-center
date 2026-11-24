@@ -1,0 +1,22 @@
+{
+  "id": "paseo-mcp-center",
+  "name": "MCP Center",
+  "description": "Centralized MCP management and manual cross-machine migration across local clients and paired Paseo hosts.",
+  "translations": {
+    "zh-CN": {
+      "name": "MCP Center",
+      "description": "多机 MCP 集中管理与经 Paseo Relay 手动迁移，支持本机各客户端独立开关与参数差异一键对齐。"
+    }
+  },
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.17.1"
+  },
+  "build": [
+    [
+      "npm",
+      "ci",
+      "--omit=dev"
+    ]
+  ]
+}
