@@ -32,13 +32,15 @@ import {
   readStoredHosts,
 } from "./relay";
 import { fingerprintConfig } from "./redact";
+import { filterInternalFromInventory } from "../shared/internal-filter";
 
 async function getHostInventory(hostId: string, paseo: PaseoApi): Promise<NodeInventory> {
   const self = await getSelfHostId(paseo);
-  if (hostId === self.hostId) {
-    return handleNodeInventory({}, paseo);
-  }
-  return invokeRemoteNodeRpc(hostId, nodeInventoryRpc, {});
+  const raw =
+    hostId === self.hostId
+      ? await handleNodeInventory({}, paseo)
+      : await invokeRemoteNodeRpc(hostId, nodeInventoryRpc, {});
+  return filterInternalFromInventory(raw);
 }
 
 async function getHostConfig(
@@ -146,7 +148,8 @@ export async function handleFleetOverview(
           };
         }
         try {
-          const inventory = await invokeRemoteNodeRpc(host.serverId, nodeInventoryRpc, {});
+          const rawInventory = await invokeRemoteNodeRpc(host.serverId, nodeInventoryRpc, {});
+          const inventory = filterInternalFromInventory(rawInventory);
           return {
             hostId: host.serverId,
             label: host.label,

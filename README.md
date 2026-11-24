@@ -40,6 +40,7 @@
 
 - **安全与容错**
   - 每次写入目标配置文件前自动生成 `.mcp-center.bak` 备份，并采用临时文件 + 原子替换写入。
+  - 自动忽略指向桌面应用包内部路径的 `stdio` MCP（如 `.app/Contents/SharedSupport/`、`.app/Contents/Resources/`、`resources/app.asar.unpacked/`），不会纳入管理或迁移，也不会改动原配置文件里的这些条目。
   - 列表视图与差异对比视图自动对 `headers` / `env` 和 URL 敏感参数脱敏；完整配置仅在编辑或执行迁移时按需读取，且跨机传输全程走 Paseo Relay E2EE 加密。
 
 ---

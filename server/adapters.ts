@@ -8,6 +8,7 @@ import {
   type McpServerConfig,
   type TargetStatus,
 } from "../shared/contracts";
+import { isInternalStdioConfig } from "../shared/internal-filter";
 
 export interface RawTargetEntry {
   name: string;
@@ -385,7 +386,7 @@ export function readTarget(target: ClientTarget): TargetReadResult {
       if (section && typeof section === "object" && !Array.isArray(section)) {
         for (const [name, value] of Object.entries(section as Record<string, unknown>)) {
           const normalized = normalizeCodexServer(value);
-          if (normalized) {
+          if (normalized && !isInternalStdioConfig(normalized.config)) {
             entries.push({
               name,
               target,
@@ -418,7 +419,9 @@ export function readTarget(target: ClientTarget): TargetReadResult {
   const entriesByName = new Map<string, RawTargetEntry>();
 
   for (const [name, config] of Object.entries(disabledStore)) {
-    entriesByName.set(name, { name, target, enabled: false, config });
+    if (!isInternalStdioConfig(config)) {
+      entriesByName.set(name, { name, target, enabled: false, config });
+    }
   }
 
   if (!exists) {
@@ -449,7 +452,7 @@ export function readTarget(target: ClientTarget): TargetReadResult {
     if (serversObj && typeof serversObj === "object" && !Array.isArray(serversObj)) {
       for (const [name, value] of Object.entries(serversObj as Record<string, unknown>)) {
         const normalized = normalizeJsonServer(value);
-        if (normalized) {
+        if (normalized && !isInternalStdioConfig(normalized.config)) {
           entriesByName.set(name, {
             name,
             target,
