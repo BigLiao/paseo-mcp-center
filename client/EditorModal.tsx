@@ -328,7 +328,7 @@ export function EditorModal({
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder="例如：tapd / gongfeng / langsmith"
+            placeholder="例如：github / filesystem / postgres"
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.input}
             autoCapitalize="none"
