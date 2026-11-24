@@ -1,14 +1,22 @@
 import type { PluginTheme } from "@getpaseo/plugin";
-import { Modal, TextInput, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, Modal, TextInput, useToast } from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, Switch, Text, View } from "react-native";
+import { View } from "react-native";
 import {
-  CLIENT_TARGETS,
-  CLIENT_TARGET_META,
   McpServerConfigSchema,
   type ClientTarget,
   type McpServerConfig,
 } from "../shared/contracts";
+import {
+  Button,
+  FieldLabel,
+  MONO_FONT,
+  ModalFooter,
+  Notice,
+  Segmented,
+  SwitchRow,
+  TargetMultiSelect,
+} from "./kit";
 
 interface EditorModalProps {
   open: boolean;
@@ -127,66 +135,6 @@ export function EditorModal({
     }
   }, [open, initialName, initialConfig, initialEnabled, initialTargets]);
 
-  const styles = useMemo(
-    () => ({
-      section: { gap: 8 },
-      label: { color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" as const },
-      input: {
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surface1,
-        color: theme.colors.foreground,
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        fontSize: 13,
-      },
-      multiline: {
-        minHeight: 84,
-        textAlignVertical: "top" as const,
-      },
-      jsonBox: {
-        minHeight: 180,
-        textAlignVertical: "top" as const,
-        fontFamily: "monospace",
-      },
-      row: {
-        flexDirection: "row" as const,
-        flexWrap: "wrap" as const,
-        gap: 8,
-        alignItems: "center" as const,
-      },
-      chip: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
-        borderWidth: 1,
-      },
-      errorBox: {
-        padding: 10,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: theme.colors.statusDanger,
-        backgroundColor: theme.colors.surface1,
-      },
-      errorText: { color: theme.colors.statusDanger, fontSize: 12 },
-      footer: {
-        flexDirection: "row" as const,
-        justifyContent: "flex-end" as const,
-        gap: 10,
-        paddingTop: 8,
-      },
-      btn: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
-        borderWidth: 1,
-      },
-      hint: { color: theme.colors.foregroundMuted, fontSize: 11 },
-    }),
-    [theme],
-  );
-
   function buildConfigFromForm(): McpServerConfig {
     if (transport === "http") {
       if (!url.trim()) throw new Error("请输入 HTTP MCP 的 URL");
@@ -272,12 +220,6 @@ export function EditorModal({
     return McpServerConfigSchema.parse(obj);
   }
 
-  function toggleTarget(target: ClientTarget) {
-    setTargets((prev) =>
-      prev.includes(target) ? prev.filter((t) => t !== target) : [...prev, target],
-    );
-  }
-
   async function handleSubmit() {
     setErrorText(null);
     const trimmedName = name.trim();
@@ -314,280 +256,224 @@ export function EditorModal({
     }
   }
 
+  const inputStyle = useMemo(
+    () => ({
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      backgroundColor: theme.colors.surface2,
+      color: theme.colors.foreground,
+      borderRadius: 8,
+      paddingHorizontal: 12,
+      paddingVertical: compact ? 11 : 9,
+      fontSize: 13,
+    }),
+    [theme, compact],
+  );
+  const multilineStyle = useMemo(
+    () => [inputStyle, { minHeight: 88, textAlignVertical: "top" as const, fontFamily: MONO_FONT, fontSize: 12 }],
+    [inputStyle],
+  );
+  const jsonStyle = useMemo(
+    () => [inputStyle, { minHeight: compact ? 220 : 260, textAlignVertical: "top" as const, fontFamily: MONO_FONT, fontSize: 12 }],
+    [inputStyle, compact],
+  );
+
+  const field = { gap: 8 };
+
   return (
     <Modal
       open={open}
       onOpenChange={onOpenChange}
       title={mode === "create" ? `新增 MCP · ${hostLabel}` : `编辑 MCP · ${hostLabel}`}
+      icon={
+        <Icon
+          name={mode === "create" ? "Plus" : "Pencil"}
+          size={18}
+          color={theme.colors.foreground}
+        />
+      }
     >
-      <Modal.Content
-        contentContainerStyle={{ padding: compact ? 16 : 20, gap: 14 }}
-      >
-        <View style={styles.section}>
-          <Text style={styles.label}>MCP 名称</Text>
+      <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16 }}>
+        <View style={field}>
+          <FieldLabel theme={theme} label="名称" />
           <TextInput
             value={name}
             onChangeText={setName}
-            placeholder="例如：github / filesystem / postgres"
+            placeholder="例如 github / filesystem / postgres"
             placeholderTextColor={theme.colors.foregroundMuted}
-            style={styles.input}
+            style={inputStyle}
             autoCapitalize="none"
+            autoCorrect={false}
+            accessibilityLabel="MCP 名称"
           />
         </View>
 
-        <View style={styles.row}>
-          {(["form", "json"] as const).map((fmt) => {
-            const active = editFormat === fmt;
-            return (
-              <Pressable
-                key={fmt}
-                onPress={() => switchFormat(fmt)}
-                style={[
-                  styles.chip,
-                  {
-                    backgroundColor: active ? theme.colors.accent : theme.colors.surface1,
-                    borderColor: active ? theme.colors.accent : theme.colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: active ? theme.colors.accentForeground : theme.colors.foreground,
-                    fontSize: 12,
-                    fontWeight: "600",
-                  }}
-                >
-                  {fmt === "form" ? "表单模式" : "JSON 模式"}
-                </Text>
-              </Pressable>
-            );
-          })}
+        <View style={field}>
+          <FieldLabel theme={theme} label="连接配置" />
+          <Segmented
+            theme={theme}
+            compact={compact}
+            value={editFormat}
+            onChange={switchFormat}
+            options={[
+              { value: "form", label: "表单", icon: "ListChecks" },
+              { value: "json", label: "JSON", icon: "Braces" },
+            ]}
+          />
         </View>
 
         {editFormat === "form" ? (
           <>
-            <View style={styles.section}>
-              <Text style={styles.label}>传输类型</Text>
-              <View style={styles.row}>
-                {(["http", "stdio"] as const).map((t) => {
-                  const active = transport === t;
-                  return (
-                    <Pressable
-                      key={t}
-                      onPress={() => setTransport(t)}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active ? theme.colors.accent : theme.colors.surface1,
-                          borderColor: active ? theme.colors.accent : theme.colors.border,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={{
-                          color: active ? theme.colors.accentForeground : theme.colors.foreground,
-                          fontSize: 12,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {t.toUpperCase()}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+            <View style={field}>
+              <FieldLabel theme={theme} label="传输类型" />
+              <Segmented
+                theme={theme}
+                compact={compact}
+                value={transport}
+                onChange={setTransport}
+                options={[
+                  { value: "http", label: "HTTP", icon: "Globe" },
+                  { value: "stdio", label: "stdio", icon: "Terminal" },
+                ]}
+              />
             </View>
 
             {transport === "http" ? (
               <>
-                <View style={styles.section}>
-                  <Text style={styles.label}>服务 URL</Text>
+                <View style={field}>
+                  <FieldLabel theme={theme} label="服务 URL" />
                   <TextInput
                     value={url}
                     onChangeText={setUrl}
-                    placeholder="https://..."
+                    placeholder="https://example.com/mcp"
                     placeholderTextColor={theme.colors.foregroundMuted}
-                    style={styles.input}
+                    style={inputStyle}
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    accessibilityLabel="服务 URL"
                   />
                 </View>
-                <View style={styles.section}>
-                  <Text style={styles.label}>HTTP Headers（每行一个 KEY=VALUE）</Text>
+                <View style={field}>
+                  <FieldLabel theme={theme} label="Headers" hint="每行一个 KEY=VALUE" />
                   <TextInput
                     value={headersText}
                     onChangeText={setHeadersText}
                     placeholder={"Authorization=Bearer xxx\nX-Custom-Header=value"}
                     placeholderTextColor={theme.colors.foregroundMuted}
-                    style={[styles.input, styles.multiline]}
+                    style={multilineStyle}
                     multiline
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel="HTTP Headers"
                   />
                 </View>
               </>
             ) : (
               <>
-                <View style={styles.section}>
-                  <Text style={styles.label}>可执行命令 (command)</Text>
+                <View style={field}>
+                  <FieldLabel theme={theme} label="命令 command" />
                   <TextInput
                     value={command}
                     onChangeText={setCommand}
-                    placeholder="例如：npx / uvx / node / /usr/local/bin/..."
+                    placeholder="npx / uvx / node / /usr/local/bin/..."
                     placeholderTextColor={theme.colors.foregroundMuted}
-                    style={styles.input}
+                    style={[inputStyle, { fontFamily: MONO_FONT }]}
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel="可执行命令"
                   />
                 </View>
-                <View style={styles.section}>
-                  <Text style={styles.label}>参数 args（每行一个参数，不按空格拆）</Text>
+                <View style={field}>
+                  <FieldLabel theme={theme} label="参数 args" hint="每行一个参数，不会按空格拆分" />
                   <TextInput
                     value={argsText}
                     onChangeText={setArgsText}
                     placeholder={"-y\n@modelcontextprotocol/server-filesystem\n/path"}
                     placeholderTextColor={theme.colors.foregroundMuted}
-                    style={[styles.input, styles.multiline]}
+                    style={multilineStyle}
                     multiline
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel="参数 args"
                   />
                 </View>
-                <View style={styles.section}>
-                  <Text style={styles.label}>环境变量 env（每行一个 KEY=VALUE）</Text>
+                <View style={field}>
+                  <FieldLabel theme={theme} label="环境变量 env" hint="每行一个 KEY=VALUE" />
                   <TextInput
                     value={envText}
                     onChangeText={setEnvText}
                     placeholder="API_TOKEN=xxx"
                     placeholderTextColor={theme.colors.foregroundMuted}
-                    style={[styles.input, styles.multiline]}
+                    style={multilineStyle}
                     multiline
                     autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel="环境变量 env"
                   />
                 </View>
               </>
             )}
           </>
         ) : (
-          <View style={styles.section}>
-            <Text style={styles.label}>单服务配置 JSON（支持标准 http 或 stdio 结构）</Text>
+          <View style={field}>
+            <FieldLabel
+              theme={theme}
+              label="单个服务的配置 JSON"
+              hint="支持标准 http（url / headers）或 stdio（command / args / env）结构"
+            />
             <TextInput
               value={jsonText}
               onChangeText={setJsonText}
               placeholder='{"type":"http","url":"https://...","headers":{}}'
               placeholderTextColor={theme.colors.foregroundMuted}
-              style={[styles.input, styles.jsonBox]}
+              style={jsonStyle}
               multiline
               autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel="配置 JSON"
             />
           </View>
         )}
 
-        <View style={styles.section}>
-          <Text style={styles.label}>写入到以下客户端（可多选，写入前自动备份 .bak）</Text>
-          <View style={styles.row}>
-            {(() => {
-              const allSelected = targets.length === CLIENT_TARGETS.length;
-              return (
-                <Pressable
-                  onPress={() => setTargets(allSelected ? [] : [...CLIENT_TARGETS])}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: allSelected ? theme.colors.accent : theme.colors.surface1,
-                      borderColor: allSelected ? theme.colors.accent : theme.colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: allSelected ? theme.colors.accentForeground : theme.colors.foreground,
-                      fontSize: 12,
-                      fontWeight: "600",
-                    }}
-                  >
-                    {allSelected ? "✓ " : ""}全部
-                  </Text>
-                </Pressable>
-              );
-            })()}
-            {CLIENT_TARGETS.map((target) => {
-              const selected = targets.includes(target);
-              return (
-                <Pressable
-                  key={target}
-                  onPress={() => toggleTarget(target)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: selected ? theme.colors.accent : theme.colors.surface1,
-                      borderColor: selected ? theme.colors.accent : theme.colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: selected ? theme.colors.accentForeground : theme.colors.foreground,
-                      fontSize: 12,
-                    }}
-                  >
-                    {selected ? "✓ " : ""}
-                    {CLIENT_TARGET_META[target].shortLabel}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+        <TargetMultiSelect
+          theme={theme}
+          compact={compact}
+          label="写入到客户端"
+          hint="写入前会在原文件旁自动备份 .mcp-center.bak"
+          value={targets}
+          onChange={setTargets}
+        />
 
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            paddingVertical: 4,
-          }}
-        >
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: "600" }}>
-              保存后立即启用
-            </Text>
-            <Text style={styles.hint}>
-              关闭时仍会保留完整定义（Codex 写 enabled=false，JSON 客户端暂存于插件禁用库）
-            </Text>
-          </View>
-          <Switch value={enabled} onValueChange={setEnabled} />
-        </View>
+        <SwitchRow
+          theme={theme}
+          label="保存后立即启用"
+          hint="关闭时仍保留完整定义（Codex 写 enabled=false，JSON 客户端暂存于插件停用库）"
+          value={enabled}
+          onValueChange={setEnabled}
+        />
 
-        {errorText ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{errorText}</Text>
-          </View>
-        ) : null}
+        {errorText ? <Notice theme={theme} tone="danger" message={errorText} /> : null}
 
-        <View style={styles.footer}>
-          <Pressable
+        <ModalFooter>
+          <Button
+            theme={theme}
+            compact={compact}
+            label="取消"
+            grow={compact}
             onPress={() => onOpenChange(false)}
-            style={[
-              styles.btn,
-              { backgroundColor: theme.colors.surface1, borderColor: theme.colors.border },
-            ]}
-          >
-            <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>取消</Text>
-          </Pressable>
-          <Pressable
-            disabled={saving}
+          />
+          <Button
+            theme={theme}
+            compact={compact}
+            variant="primary"
+            icon="Check"
+            label={mode === "create" ? "创建" : "保存"}
+            grow={compact}
+            loading={saving}
             onPress={() => void handleSubmit()}
-            style={[
-              styles.btn,
-              {
-                backgroundColor: theme.colors.accent,
-                borderColor: theme.colors.accent,
-                opacity: saving ? 0.6 : 1,
-              },
-            ]}
-          >
-            <Text style={{ color: theme.colors.accentForeground, fontSize: 13, fontWeight: "600" }}>
-              {saving ? "保存中..." : "保存配置"}
-            </Text>
-          </Pressable>
-        </View>
+          />
+        </ModalFooter>
       </Modal.Content>
     </Modal>
   );

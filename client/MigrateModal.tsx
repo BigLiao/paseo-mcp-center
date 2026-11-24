@@ -1,10 +1,9 @@
 import type { PluginTheme } from "@getpaseo/plugin";
 import { useRpc } from "@getpaseo/plugin/client";
-import { Modal, TextInput, useToast } from "@getpaseo/plugin/client/ui";
+import { Icon, Modal, TextInput, useToast } from "@getpaseo/plugin/client/ui";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import {
-  CLIENT_TARGETS,
   CLIENT_TARGET_META,
   McpServerConfigSchema,
   fleetExecuteMigrateRpc,
@@ -16,6 +15,25 @@ import {
   type MigrateExecuteOutput,
   type MigratePreviewOutput,
 } from "../shared/contracts";
+import {
+  Badge,
+  Button,
+  Card,
+  FieldLabel,
+  HostChip,
+  MONO_FONT,
+  ModalFooter,
+  Notice,
+  Segmented,
+  SwitchRow,
+  TargetMultiSelect,
+} from "./kit";
+
+const CONFLICT_OPTIONS = [
+  { value: "overwrite", label: "覆盖", hint: "目标机已有同名 MCP 时，用源配置覆盖。" },
+  { value: "skip", label: "跳过", hint: "目标机已有同名 MCP 时保持不变，只迁移新增项。" },
+  { value: "rename", label: "重命名", hint: "目标机已有同名 MCP 时，以 name-2 这类新名称写入。" },
+] as const;
 
 interface MigrateModalProps {
   open: boolean;
@@ -99,78 +117,6 @@ export function MigrateModal({
   const fromNode = nodes.find((n) => n.hostId === fromHostId);
   const toNode = nodes.find((n) => n.hostId === toHostId);
 
-  const styles = useMemo(
-    () => ({
-      section: { gap: 8 },
-      label: { color: theme.colors.foregroundMuted, fontSize: 12, fontWeight: "600" as const },
-      row: {
-        flexDirection: "row" as const,
-        flexWrap: "wrap" as const,
-        gap: 8,
-        alignItems: "center" as const,
-      },
-      chip: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 8,
-        borderWidth: 1,
-      },
-      card: {
-        padding: 12,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surface1,
-        gap: 8,
-      },
-      warnBox: {
-        padding: 10,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: theme.colors.statusWarning,
-        backgroundColor: theme.colors.surface1,
-      },
-      errBox: {
-        padding: 10,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: theme.colors.statusDanger,
-        backgroundColor: theme.colors.surface1,
-      },
-      jsonBox: {
-        minHeight: 130,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surface0,
-        color: theme.colors.foreground,
-        borderRadius: 8,
-        padding: 10,
-        fontSize: 12,
-        fontFamily: "monospace",
-        textAlignVertical: "top" as const,
-      },
-      footer: {
-        flexDirection: "row" as const,
-        justifyContent: "flex-end" as const,
-        gap: 10,
-        paddingTop: 8,
-      },
-      btn: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 8,
-        borderWidth: 1,
-      },
-    }),
-    [theme],
-  );
-
-  function toggleTarget(target: ClientTarget) {
-    setTargetClients((prev) =>
-      prev.includes(target) ? prev.filter((t) => t !== target) : [...prev, target],
-    );
-  }
-
   async function handleExecute() {
     if (!preview) return;
     if (targetClients.length === 0) {
@@ -231,334 +177,258 @@ export function MigrateModal({
     }
   }
 
+  const c = theme.colors;
+  const conflictHint = CONFLICT_OPTIONS.find((o) => o.value === conflictMode)?.hint;
+  const sameHost = fromHostId === toHostId;
+  const done = execResult !== null;
+
   return (
-    <Modal open={open} onOpenChange={onOpenChange} title="手动迁移 MCP（经 Paseo Relay）">
-      <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: 14 }}>
-        <View style={styles.card}>
-          <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: "600" }}>
-            源主机：{fromNode?.label ?? fromHostId}
-            {fromNode?.inventory ? ` (${fromNode.inventory.platform})` : ""}
-          </Text>
-          <Text style={styles.label}>选择目标主机（支持跨机迁移或同机跨客户端复制）</Text>
-          <View style={styles.row}>
-            {onlineNodes.map((node) => {
-              const active = node.hostId === toHostId;
-              return (
-                <Pressable
-                  key={node.hostId}
-                  onPress={() => setToHostId(node.hostId)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: active ? theme.colors.accent : theme.colors.surface0,
-                      borderColor: active ? theme.colors.accent : theme.colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: active ? theme.colors.accentForeground : theme.colors.foreground,
-                      fontSize: 12,
-                      fontWeight: "600",
-                    }}
-                  >
-                    {node.label}
-                    {node.isSelf ? " (本机)" : ""}
-                    {node.inventory ? ` · ${node.inventory.platform}` : ""}
-                  </Text>
-                </Pressable>
-              );
-            })}
+    <Modal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={items.length > 1 ? `迁移 ${items.length} 个 MCP` : `迁移 ${items[0]?.name ?? "MCP"}`}
+      icon={<Icon name="ArrowRightLeft" size={18} color={c.foreground} />}
+    >
+      <Modal.Content contentContainerStyle={{ padding: compact ? 16 : 20, gap: 16 }}>
+        {/* Route */}
+        <View style={{ gap: 8 }}>
+          <FieldLabel
+            theme={theme}
+            label="目标主机"
+            hint={`源：${fromNode?.label ?? fromHostId}${
+              fromNode?.inventory ? `（${fromNode.inventory.platform}）` : ""
+            }。选择源主机本身即可在同机不同客户端之间复制。`}
+          />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {onlineNodes.map((node) => (
+              <HostChip
+                key={node.hostId}
+                theme={theme}
+                compact={compact}
+                node={node}
+                selected={node.hostId === toHostId}
+                meta={node.inventory?.platform}
+                disabled={executing}
+                onPress={() => {
+                  setToHostId(node.hostId);
+                  setExecResult(null);
+                }}
+              />
+            ))}
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>写入到目标主机的哪些客户端</Text>
-          <View style={styles.row}>
-            {(() => {
-              const allSelected = targetClients.length === CLIENT_TARGETS.length;
-              return (
-                <Pressable
-                  onPress={() =>
-                    setTargetClients(allSelected ? [] : [...CLIENT_TARGETS])
-                  }
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: allSelected ? theme.colors.accent : theme.colors.surface1,
-                      borderColor: allSelected ? theme.colors.accent : theme.colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: allSelected ? theme.colors.accentForeground : theme.colors.foreground,
-                      fontSize: 12,
-                      fontWeight: "600",
-                    }}
-                  >
-                    {allSelected ? "✓ " : ""}全部
-                  </Text>
-                </Pressable>
-              );
-            })()}
-            {CLIENT_TARGETS.map((target) => {
-              const selected = targetClients.includes(target);
-              return (
-                <Pressable
-                  key={target}
-                  onPress={() => toggleTarget(target)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: selected ? theme.colors.accent : theme.colors.surface1,
-                      borderColor: selected ? theme.colors.accent : theme.colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: selected ? theme.colors.accentForeground : theme.colors.foreground,
-                      fontSize: 12,
-                    }}
-                  >
-                    {selected ? "✓ " : ""}
-                    {CLIENT_TARGET_META[target].shortLabel}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+        <TargetMultiSelect
+          theme={theme}
+          compact={compact}
+          label={sameHost ? "复制到本机的客户端" : "写入目标主机的客户端"}
+          value={targetClients}
+          onChange={setTargetClients}
+        />
+
+        <View style={{ gap: 8 }}>
+          <FieldLabel theme={theme} label="同名冲突时" hint={conflictHint} />
+          <Segmented
+            theme={theme}
+            compact={compact}
+            value={conflictMode}
+            onChange={setConflictMode}
+            options={CONFLICT_OPTIONS}
+          />
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>同名冲突策略</Text>
-          <View style={styles.row}>
-            {(
-              [
-                { id: "overwrite", label: "覆盖更新" },
-                { id: "skip", label: "跳过已有" },
-                { id: "rename", label: "自动重命名 (-2)" },
-              ] as const
-            ).map((opt) => {
-              const active = conflictMode === opt.id;
-              return (
-                <Pressable
-                  key={opt.id}
-                  onPress={() => setConflictMode(opt.id)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor: active ? theme.colors.accent : theme.colors.surface1,
-                      borderColor: active ? theme.colors.accent : theme.colors.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      color: active ? theme.colors.accentForeground : theme.colors.foreground,
-                      fontSize: 12,
-                    }}
-                  >
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
+        <SwitchRow
+          theme={theme}
+          label="迁移后立即启用"
+          value={enabledAfterMigrate}
+          onValueChange={setEnabledAfterMigrate}
+        />
 
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>
-            迁移后在目标主机立即启用
-          </Text>
-          <Switch value={enabledAfterMigrate} onValueChange={setEnabledAfterMigrate} />
-        </View>
-
+        {/* Preview */}
         {loadingPreview ? (
-          <View style={{ padding: 20, alignItems: "center", gap: 8 }}>
-            <ActivityIndicator color={theme.colors.accent} />
-            <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12 }}>
-              正在经 Relay 拉取配置并生成差异预览...
+          <View style={{ paddingVertical: 20, alignItems: "center", gap: 8 }}>
+            <ActivityIndicator color={c.accent} />
+            <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
+              正在经 Relay 拉取配置并生成预览…
             </Text>
           </View>
         ) : null}
 
         {previewError ? (
-          <View style={styles.errBox}>
-            <Text style={{ color: theme.colors.statusDanger, fontSize: 12 }}>
-              预览失败：{previewError}
-            </Text>
-          </View>
+          <Notice theme={theme} tone="danger" title="预览失败" message={previewError} />
         ) : null}
 
         {preview ? (
-          <View style={styles.section}>
+          <View style={{ gap: 10 }}>
             {preview.crossOs && preview.items.some((i) => i.crossOsStdioWarning) ? (
-              <View style={styles.warnBox}>
-                <Text style={{ color: theme.colors.statusWarning, fontSize: 12, fontWeight: "600" }}>
-                  跨系统提示 ({preview.fromPlatform} → {preview.toPlatform})
-                </Text>
-                <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, marginTop: 4 }}>
-                  包含 stdio 类型 MCP，不同系统的可执行文件路径或环境变量可能不同。点开下方「微调参数」可在写入前修改。
-                </Text>
-              </View>
+              <Notice
+                theme={theme}
+                tone="warning"
+                title={`跨系统迁移（${preview.fromPlatform} → ${preview.toPlatform}）`}
+                message="包含 stdio 类型 MCP，可执行文件路径或环境变量可能不同。可展开条目，在写入前微调参数。"
+              />
             ) : null}
 
-            <Text style={styles.label}>待迁移项目（共 {preview.items.length} 项）</Text>
+            <FieldLabel theme={theme} label={`待迁移（${preview.items.length}）`} />
             {preview.items.map((item) => {
               const isExpanded = expandedItem === item.name;
-              const badgeColor =
+              const relation =
                 item.relation === "new"
-                  ? theme.colors.statusSuccess
+                  ? { tone: "success" as const, label: "新增" }
                   : item.relation === "diff"
-                    ? theme.colors.statusWarning
-                    : theme.colors.foregroundMuted;
-              const badgeText =
-                item.relation === "new"
-                  ? "目标机新增"
-                  : item.relation === "diff"
-                    ? "与目标机配置不同"
-                    : "与目标机一致";
+                    ? { tone: "warning" as const, label: "配置不同" }
+                    : { tone: "muted" as const, label: "已一致" };
+              const result = execResult?.results.find((r) => r.name === item.name);
 
               return (
-                <View key={item.name} style={styles.card}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          color: theme.colors.foreground,
-                          fontSize: 14,
-                          fontWeight: "600",
-                        }}
-                      >
-                        {item.name}
-                      </Text>
-                      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
-                        来源：{CLIENT_TARGET_META[item.sourceTarget].shortLabel} ·{" "}
-                        {item.sourceConfig.type.toUpperCase()}
-                        {item.targetExistingTargets.length > 0
-                          ? ` · 目标机已有于 ${item.targetExistingTargets
-                              .map((t) => CLIENT_TARGET_META[t].shortLabel)
-                              .join("/")}`
-                          : ""}
-                      </Text>
-                    </View>
-                    <Text style={{ color: badgeColor, fontSize: 11, fontWeight: "600" }}>
-                      {badgeText}
+                <Card key={item.name} theme={theme} compact={compact} style={{ gap: 8 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: c.foreground, fontSize: 14, fontWeight: "600", flexShrink: 1 }}
+                    >
+                      {item.name}
                     </Text>
+                    <Badge theme={theme} label={item.sourceConfig.type.toUpperCase()} />
+                    <View style={{ flex: 1 }} />
+                    <Badge theme={theme} tone={relation.tone} label={relation.label} />
                   </View>
+                  <Text style={{ color: c.foregroundMuted, fontSize: 12 }}>
+                    来源 {CLIENT_TARGET_META[item.sourceTarget].shortLabel}
+                    {item.targetExistingTargets.length > 0
+                      ? ` · 目标机已存在于 ${item.targetExistingTargets
+                          .map((t) => CLIENT_TARGET_META[t].shortLabel)
+                          .join(" / ")}`
+                      : ""}
+                  </Text>
 
                   {item.crossOsStdioWarning ? (
-                    <Text style={{ color: theme.colors.statusWarning, fontSize: 11 }}>
-                      ⚠ stdio 跨系统迁移，请确认 command/args 在 {preview.toPlatform} 上可用
-                    </Text>
+                    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                      <Icon name="TriangleAlert" size={13} color={c.statusWarning} />
+                      <Text style={{ color: c.statusWarning, fontSize: 12, flex: 1 }}>
+                        请确认 command / args 在 {preview.toPlatform} 上可用
+                      </Text>
+                    </View>
                   ) : null}
 
-                  <Pressable
-                    onPress={() => setExpandedItem(isExpanded ? null : item.name)}
-                    style={{ alignSelf: "flex-start" }}
-                  >
-                    <Text style={{ color: theme.colors.accent, fontSize: 12, fontWeight: "600" }}>
-                      {isExpanded ? "收起参数微调 ▲" : "写入前微调参数 (JSON) ▼"}
-                    </Text>
-                  </Pressable>
+                  {result ? (
+                    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                      <Icon
+                        name={
+                          result.status === "migrated"
+                            ? "CircleCheck"
+                            : result.status === "skipped"
+                              ? "CircleMinus"
+                              : "CircleX"
+                        }
+                        size={14}
+                        color={
+                          result.status === "migrated"
+                            ? c.statusSuccess
+                            : result.status === "skipped"
+                              ? c.foregroundMuted
+                              : c.statusDanger
+                        }
+                      />
+                      <Text
+                        selectable
+                        style={{
+                          flex: 1,
+                          fontSize: 12,
+                          color:
+                            result.status === "error" ? c.statusDanger : c.foregroundMuted,
+                        }}
+                      >
+                        {result.finalName !== result.name ? `→ ${result.finalName}，` : ""}
+                        {result.status === "migrated"
+                          ? `已写入 ${result.appliedTargets
+                              .map((t) => CLIENT_TARGET_META[t].shortLabel)
+                              .join("、")}`
+                          : result.status === "skipped"
+                            ? "已跳过（目标机已存在）"
+                            : `失败：${result.error ?? "未知错误"}`}
+                      </Text>
+                    </View>
+                  ) : null}
 
-                  {isExpanded ? (
+                  {!done ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: isExpanded }}
+                      onPress={() => setExpandedItem(isExpanded ? null : item.name)}
+                      hitSlop={6}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 4,
+                        alignSelf: "flex-start",
+                        minHeight: compact ? 32 : 24,
+                      }}
+                    >
+                      <Icon name="Wrench" size={13} color={c.accent} />
+                      <Text style={{ color: c.accent, fontSize: 12, fontWeight: "600" }}>
+                        写入前微调参数
+                      </Text>
+                      <Icon
+                        name={isExpanded ? "ChevronUp" : "ChevronDown"}
+                        size={13}
+                        color={c.accent}
+                      />
+                    </Pressable>
+                  ) : null}
+
+                  {isExpanded && !done ? (
                     <TextInput
                       value={overrideJsonByName[item.name] ?? ""}
                       onChangeText={(txt) =>
                         setOverrideJsonByName((prev) => ({ ...prev, [item.name]: txt }))
                       }
-                      style={styles.jsonBox}
+                      style={{
+                        minHeight: 150,
+                        borderWidth: 1,
+                        borderColor: c.border,
+                        backgroundColor: c.surface2,
+                        color: c.foreground,
+                        borderRadius: 8,
+                        padding: 10,
+                        fontSize: 12,
+                        fontFamily: MONO_FONT,
+                        textAlignVertical: "top",
+                      }}
                       multiline
                       autoCapitalize="none"
+                      autoCorrect={false}
+                      accessibilityLabel={`${item.name} 配置 JSON`}
                     />
                   ) : null}
-                </View>
+                </Card>
               );
             })}
           </View>
         ) : null}
 
-        {execResult ? (
-          <View style={styles.card}>
-            <Text style={{ color: theme.colors.foreground, fontSize: 13, fontWeight: "600" }}>
-              迁移执行结果
-            </Text>
-            {execResult.results.map((r) => (
-              <Text
-                key={`${r.name}-${r.finalName}`}
-                style={{
-                  color:
-                    r.status === "migrated"
-                      ? theme.colors.statusSuccess
-                      : r.status === "skipped"
-                        ? theme.colors.foregroundMuted
-                        : theme.colors.statusDanger,
-                  fontSize: 12,
-                }}
-              >
-                • {r.name}
-                {r.finalName !== r.name ? ` → ${r.finalName}` : ""}：
-                {r.status === "migrated"
-                  ? `已写入 ${r.appliedTargets.map((t) => CLIENT_TARGET_META[t].shortLabel).join(", ")}`
-                  : r.status === "skipped"
-                    ? "已跳过（目标机已存在）"
-                    : `失败：${r.error ?? "未知错误"}`}
-              </Text>
-            ))}
-          </View>
-        ) : null}
-
-        <View style={styles.footer}>
-          <Pressable
+        <ModalFooter>
+          <Button
+            theme={theme}
+            compact={compact}
+            label={done ? "关闭" : "取消"}
+            grow={compact}
             onPress={() => onOpenChange(false)}
-            style={[
-              styles.btn,
-              { backgroundColor: theme.colors.surface1, borderColor: theme.colors.border },
-            ]}
-          >
-            <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>关闭</Text>
-          </Pressable>
-          <Pressable
-            disabled={!preview || executing || loadingPreview}
-            onPress={() => void handleExecute()}
-            style={[
-              styles.btn,
-              {
-                backgroundColor: theme.colors.accent,
-                borderColor: theme.colors.accent,
-                opacity: !preview || executing || loadingPreview ? 0.5 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: theme.colors.accentForeground,
-                fontSize: 13,
-                fontWeight: "600",
-              }}
-            >
-              {executing
-                ? "迁移中..."
-                : `确认迁移到 ${toNode?.label ?? "目标机"}`}
-            </Text>
-          </Pressable>
-        </View>
+          />
+          {done ? null : (
+            <Button
+              theme={theme}
+              compact={compact}
+              variant="primary"
+              icon="ArrowRight"
+              label={compact ? "确认迁移" : `迁移到 ${toNode?.label ?? "目标机"}`}
+              grow={compact}
+              loading={executing}
+              disabled={!preview || loadingPreview || targetClients.length === 0}
+              onPress={() => void handleExecute()}
+            />
+          )}
+        </ModalFooter>
       </Modal.Content>
     </Modal>
   );
